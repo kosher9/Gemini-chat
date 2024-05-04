@@ -25,21 +25,43 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.github.kosher9.geminitextmodel.GenerativeViewModelFactory
 import com.github.kosher9.geminitextmodel.R
+import kotlinx.coroutines.launch
 
 @Composable
-fun ChatScreen() {
+fun ChatScreen(
+    chatViewModel: ChatViewModel = viewModel(factory = GenerativeViewModelFactory),
+) {
     val listState = rememberLazyListState()
-    val messages = listOf(ChatMessage("1", "Hey buddy", Participant.USER), ChatMessage("2", "Hey! How can I help you?", Participant.MODEL))
+    val chatUiState = chatViewModel.uiState.collectAsState()
+    val coroutineScope = rememberCoroutineScope()
+//    val messages = listOf(ChatMessage("1", "Hey buddy", Participant.USER), ChatMessage("2", "Hey! How can I help you?", Participant.MODEL))
     Scaffold(
         bottomBar = {
-            MessageInput()
+            MessageInput(
+                onSendMessage = { inputText ->
+                    chatViewModel.sendMessage(inputText)
+                },
+                resetScroll = {
+                    coroutineScope.launch {
+                        listState.scrollToItem(0)
+                    }
+                }
+            )
         }
     ) { paddingValues ->
         Column(
@@ -48,26 +70,32 @@ fun ChatScreen() {
                 .fillMaxSize()
         ) {
             // Messages List
-            ChatList(messages, listState)
+            ChatList(chatUiState.value.messages, listState)
         }
     }
 }
 
 @Composable
-fun MessageInput(){
+fun MessageInput(
+    onSendMessage: (String) -> Unit,
+    resetScroll: () -> Unit = {},
+) {
     ElevatedCard(
         modifier = Modifier
             .fillMaxWidth()
     ) {
+
+        var userMessage by rememberSaveable { mutableStateOf("") }
+
         Row(
             modifier = Modifier
                 .padding(16.dp)
                 .fillMaxWidth()
         ) {
             OutlinedTextField(
-                value = "",
+                value = userMessage,
                 label = { Text(stringResource(R.string.chat_label)) },
-                onValueChange = {  },
+                onValueChange = { userMessage = it },
                 keyboardOptions = KeyboardOptions(
                     capitalization = KeyboardCapitalization.Sentences,
                 ),
@@ -77,7 +105,13 @@ fun MessageInput(){
                     .weight(0.85f)
             )
             IconButton(
-                onClick = {},
+                onClick = {
+                    if (userMessage.isNotBlank()) {
+                        onSendMessage(userMessage)
+                        userMessage = ""
+                        resetScroll()
+                    }
+                },
                 modifier = Modifier
                     .padding(start = 16.dp)
                     .align(Alignment.CenterVertically)
@@ -97,7 +131,7 @@ fun MessageInput(){
 @Composable
 fun ChatList(
     chatMessages: List<ChatMessage>,
-    listState: LazyListState
+    listState: LazyListState,
 ) {
     LazyColumn(
         reverseLayout = true,
@@ -111,7 +145,7 @@ fun ChatList(
 
 @Composable
 fun ChatBubbleItem(
-    chatMessage: ChatMessage
+    chatMessage: ChatMessage,
 ) {
     val isModelMessage = chatMessage.participant == Participant.MODEL
 
